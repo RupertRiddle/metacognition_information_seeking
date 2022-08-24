@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>My experiment</title>
+    <script src="dist/jspsych.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="dist/plugin-html-keyboard-response.js"></script>
+    <script src="dist/plugin-image-keyboard-response.js"></script>
+    <script src="dist/plugin-survey-text.js"></script>
+    <script src="dist/plugin-preload.js"></script>
+    <script src="dist/plugin-canvas-keyboard-response.js"></script>
+    <script src="dist/plugin-html-button-response.js"></script>
+    <script src="dist/plugin-survey-multi-choice.js"></script>
+    <script src="dist/plugin-resize.js"></script>
+    <script src="dist/plugin-instructions.js"></script>
+    <script src="dist/plugin-html-slider-response.js"></script>
+    <script src="dist/plugin-fullscreen.js"></script>
+    <script src="dist/plugin-survey-text.js"></script>
+    <script src="dist/plugin-survey.js"></script>
+    <link href="dist/jspsych.css" rel="stylesheet" type="text/css" />
+
+    
+  </head>
+    <!-- my files -->
+    <script src="exp_functions.js"></script> 
+    
+    
+  <body></body>
+  <script>
+
+function save_data_csv(dataset){
+    
+    jQuery.ajax({
+        method: 'POST',
+        cache: false,
+        url: "https://www.ucl.ac.uk/lagnado-lab/experiments/tdp/RRExp/php_save_function.php",
+        data: {
+            file_name: bonus_reward+"_dots_" + subject_id + ".csv",
+            exp_data: dataset
+        }
+    });
+}
+
+function save_participant_reward_data(dataset){
+
+    jQuery.ajax({
+        method: 'POST',
+        cache: false,
+        url: "https://www.ucl.ac.uk/lagnado-lab/experiments/tdp/RRExp/php_save_function.php",
+        data: {
+            file_name: subject_id + "reward.csv",
+            exp_data: dataset
+        }
+    });
+}
+
+// KEY TIMELINE VARIABLES
+var timeline = [];
+    var resp_keys = ['e','i'];
+    var current_block = 1
+    var ppcm = Math.round(Math.sqrt(Math.pow(1920,2)+Math.pow(1080,2))/35.56) //i.e. 1cm of pixels on my FHD(1920*1080) 14"(35.56cm) screen 
+    var stim_canv = [Math.round(9*ppcm), Math.round(14*ppcm)];
+    var info_presentation_order = shuffle_info_order([2,3,4,5]); // randomly determines the order in which participants can seek info.
+        // experiential stimuli will be shown on info_presentation_order[0,1]th blocks, descriptive stimuli in [2,3]th blocks
+    var nDots = 4.25;
+    var block_num = 1;
+    var num_block = 5;
+    var information_sought = 0; // the number of times a participant seeks information of either type
+    var information_cost = 5;  // the cost of information sought
+    var total_score = 0;        // the total points accumulated across trials
+    var confidence_threshold = 102; // the confidence level below which the option to seek information is triggered // set so that question is always triggered.
+    var trial_num = 1;             // 
+    var num_prac = 20; //20 if testing, note trials 6 and 11 are used by staircase changes
+    var num_trial =120; //120 if testing, must be multiple of 5 as 5 blocks are used
+    var num_total = num_prac+num_trial; 
+    var not_yet_shown = true
+    var evidence_accuracy = 0
+    var reward_info = ""
+    var evidence_confidence = 0
+    /* create timeline */
+    
+    try {
+        var subject_id = jsPsych.data.getURLVariable('PROLIFIC_PID');
+        var study_id = jsPsych.data.getURLVariable('STUDY_ID');
+        var session_id = jsPsych.data.getURLVariable('SESSION_ID');}
+    catch(err){
+        if(typeof subject_id =='undefined'){
+            var request_subject_id = true}
+        }
+
+    var bonus_reward = 0
+
+ 
+    var csv_name = "data_" + subject_id
+    var sbj_id = Math.floor(Math.random()*(100000-10000))+99999;
+
+    /* initialize jsPsych */
+    var jsPsych = initJsPsych({
+    override_safe_mode: true,
+    show_progress_bar: true,
+    auto_update_progress_bar: false,
+    message_progress_bar: '% trials completed: ',
+    on_close: function() {
+        participant_data = jsPsych.data.get().filter([{task: 'data_storage'}]).csv()
+        reward_info = "subject_id,"+subject_id+", bonus_reward,"+bonus_reward
+        save_data_csv(participant_data)
+        //save_participant_reward_data(reward_info)
+        console.log(reward_info)
+    }
+});
+
+// Presentation/Introduction Pages
+
+var subject_id_q = {
+    type: jsPsychSurveyText,
+    questions: [{prompt: 'Please enter your prolific subject id in the box below. <br></br> Please note, without an accurate Prolific subject ID, we cannot provide a bonus payment after study completion', required:true}],
+    on_finish: function (){
+        var current_node_id = jsPsych.getCurrentTimelineNodeID();
+        subject_id =  jsPsych.data.getDataByTimelineNode(current_node_id).values()[0]['response']['Q0'];
+        subject_id = subject_id.replace(/\s+/g, '#') // in case of any whitespace characters, remove them
+    }   
+   
+}
+var intro = {
+    type: jsPsychInstructions,
+    pages: [
+    `<p style="font-size:25px;">Welcome to the task!<br><br>
+    We will now ask you to judge which of two images contains more dots, before asking you to rate your confidence in your judgement.<br>
+    At the beginning of each trial, you will be presented with a black cross in the middle of the screen. Focus your attention on it. Then, two black boxes with a number of white dots will be flashed and you will be asked to judge which box had a higher number of dots.<br><br>
+    If the box on the <strong>left</strong> had more dots, <strong>press ` + resp_keys[0] + ` </strong>.<br> If the box on the <strong>right</strong> had more dots, <strong>press ` + resp_keys[1] + ` </strong>.<br><br>
+    Please respond quickly and to the best of your ability.<br>
+    You will then rate your confidence in your judgement on a scale with the mouse.<br>
+    Please do your best to rate your confidence accurately and do take advantage of the whole rating scale.</p>`,
+
+    `<p style="font-size:25px;">We will now ask you to carry out some practice trials. Please respond only when the dots have disappeared.<br><br>
+    In this practice phase we will tell you whether your judgements are right or wrong.<br><br>
+    If you are <strong>correct</strong>, the box that you selected will be outlined in <font color="green"><strong>green</strong></font>.<br>
+    If you are <strong>incorrect</strong>, the box that you selected will be outlined in <font color="red"><strong>red</strong></font>.<br><br>
+    You will not need to rate your confidence of your judgements on these trials.</p>`
+    ],
+    show_clickable_nav: true,
+
+}
+
+//END PRACTICE, INTRODUCE EXPERIMENT/////
+    var conf_intro = {
+    type: jsPsychInstructions,
+    pages: [
+    `<p style="font-size:25px;">In the actual task, you will not be provided accuracy feedback on your judgements, but the box you selected will be outlined in <font color="blue"><strong>blue</strong></font>.<br><br>
+    You will be asked to rate your confidence in your judgement after each trial by providing a score from 0-100. <br><br> If you lack confidence in your response, your  rating should be close to <strong>0</strong> <br><br>
+    Similarly, if you are completely sure about your decision, your score should be close to <strong>100</strong>  <br><br>`
+    ],
+    show_clickable_nav: true
+}
+
+var resize = {
+    type: jsPsychResize,
+    item_width: 8.56, //size of credit card in cm
+    item_height: 5.398,
+    starting_size: ppcm*5.398, //close enough if anyone just skips it
+    prompt: `<p>We require the stimuli in this experiment to all be the same size, regardless of the devices they are viewed on.<br>
+            In order to achieve this, we need the measurements of something that is always the same, so we'll use a credit card.<br>
+            Click and drag the lower right corner of the box until the box is <u><i>exactly</i></u> the same size as a credit/debit card held up to the screen.</p>`,
+    pixels_per_unit: ppcm
+};
+
+    var debrief_page = {
+        type: jsPsychHtmlKeyboardResponse,
+        prompt: function() {
+            var trials = jsPsych.data.get().select('correct').values
+            var successful_trials = trials.filter(Boolean).length
+            var accuracy = Math.round(((successful_trials/trials.length)*100),2)
+            var accuracy_score = 5*accuracy
+
+            var my_data = jsPsych.data.get().filter([{task: 'data_storage'}]).values()
+            for (let i = 0; i<my_data.length; i ++) // loop through trials
+                { if (i >= num_trial - 15) // 
+                    {if(my_data[i]['info_searched'] == 'n' || my_data[i]['info_searched'] == null)
+                        {if (my_data[i]['inital_confidence']!=null){trial_points = calculate_points(my_data[i]['inital_confidence'],my_data[i]['initial_outcome']),total_score = total_score + trial_points}}
+                    else{trial_points = calculate_points(my_data[i]['final_conf'],my_data[i]['final_resp_value']),total_score = total_score + trial_points}}}
+                    trial_points = Math.round(total_score)/2
+                    total_score = Math.round((total_score/96)*5)
+
+                    bonus_reward = Math.round(Math.round(((+accuracy_score+total_score)-(information_cost*information_sought))/5))
+                    var text = `Thank You for participating in this study. You achieved an average accuracy of <strong>`+ accuracy+ '</strong>, and won a total of <strong>' +(total_score + accuracy_score)+ ' </strong> points! You also chose to view supplementary information a total of <strong>' + information_sought+ '</strong> times, leading to a total cost of <strong>'+information_cost*information_sought + '</strong> points. You are therefore eligible for a bonus reward of <strong>'+bonus_reward+' pence </strong> <br></br> Please continue to the next page using any key to access the prolific completion code.'
+            return text
+                },
+        choices: "ALL KEYS",
+        stimulus: '<p style="font-size:25px;"',
+        on_finish: function(){
+            participant_data = jsPsych.data.get().filter([{task: 'data_storage'}]).csv()
+            reward_info = "subject_id,"+subject_id+", bonus_reward,"+bonus_reward
+            save_data_csv(participant_data)
+            save_participant_reward_data(reward_info)
+        }
+        }
+    
+    var exit_page = {
+        type :jsPsychHtmlKeyboardResponse,
+        stimulus:`If you have any further questions about the study you have completed, feel free to contact the lead researcher at: <strong> ucjurr6@ucl.ac.uk </strong> <br></br><a href="https://app.prolific.co/submissions/complete?cc=8B19DDB7">Click here to return to Prolific and complete the study</a>.</p>`,
+        choices: "NO_KEYS"
+    }
+
+    var score_tutorial = {
+        type: jsPsychInstructions,
+        pages: [  `<p style="font-size:25px;"> Your performance in the following trials will be used to generate a bonus reward of up to <strong> £2 </strong>. This reward is based on your overall accuracy and how well your confidence tracks your performance across the experiment.<br></br> High confidence in responses that are correct will result in a high number of points being awarded in a trial. Similarly, lower confidence in a response that is incorrect will result in a higher number of points than a high confidence guess. <br></br> Thus, to maximise your bonus reward in this experiment, you are incentivised to seek information to aid your decision making and confidence estimates <br></br> Please note, it is not possible to earn less than the participation fee for taking this study.`
+        ],
+        show_clickable_nav: true,
+    }
+    var exp_intro = {
+    type: jsPsychInstructions,
+    pages: [
+        `<p style="font-size:25px;">You will now continue directly to the experiment. The dots will presented only for a short period of time. 
+        You will be asked to rate your confidence in your judgement after each trial.<br><br>
+        The task proper is divided into 5 blocks of 24 trials each, where you 
+        can pause for a short break before every block. There are no time limits on your responses to the dots and on your confidence ratings. <br><br>
+        As a reminder: If the box on the left had more dots, <strong>press  ` + resp_keys[0] + 
+        `</strong>. If the box on the right had more dots, <strong>press  ` + resp_keys[1] + `</strong>.<br><br>
+        Press next to begin.</p><br>`
+    ],
+    show_clickable_nav: true
+}
+var trial_break = {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: function(){ //must be a function to return the updated block_num
+         return `<p style="font-size:25px;">You can now pause for a break. You have completed `+block_num+
+         ` out of `+num_block+` blocks.<br>
+         If you leave full-screen, please return your browser to full-screen mode (F11) so the task can run properly.<br><br>
+         As a reminder:<br>If the box on the left had more dots, <strong>press  `+resp_keys[0]+
+         `</strong>.<br> If the box on the right had more dots, <strong>press  `+resp_keys[1]+`</strong>.
+         <br><br>Press spacebar to continue the task</p>`},
+    choices: [' '],
+    on_finish: function(){block_num++
+                          current_block++}
+};
+
+
+
+var information_seeking_intro = {
+  type: jsPsychInstructions,
+  pages: [
+        `<p style="font-size:25px;">In the next set of trials, you will have the oppourtunity to get extra information about a given trial. 
+          To do so, you will need to you will need to pay <strong>`+ information_cost+` Points </strong>. These points will be subtracted from your final score at the end of the experiment. <br></br> However, if this extra information helps you make a correct decision, there will be a significant payoff in terms of points gained, and thus you are encouraged to seek extra information when you see fit. Please note the option to view extra information on a trial will appear irrespective of whether your response is correct or incorrect.`,
+        `<p style="font-size:25px;"> If you choose to view the extra information available to you, you will be asked to reconsider your decision and provide a new confidence estimate for your final decision in a given trial. <br></br> If you wish to change your decision, you should press <strong> y </strong> when prompted. <br></br> If you wish to stick with your original decision, you should press <strong> n </strong> when prompted. <br></br>if you choose not to view information after a trial, there will be a <strong> 2 second delay </strong> before the next trial starts.`,
+        `<p style="font-size:25px;"> Before opting to view additional trial information, a prompt will indicate which type of information is avaialable to you. <br></br> In some trials, you will be presented with the option to <strong> re-inspect </strong> the <strong>same </strong> set of stimuli you just saw to check your decision. During this inspection, you will not be able to respond as in a normal trial. <br></br> 
+        In other trials, you will be presented with the option to view the <strong> response </strong>, <strong> confidence </strong> and <strong> overall accuracy </strong> of <strong> another participant </strong> who completed the same trial as you to guide your decision. As above, you will not be able to respond during this presentation. <br></br> 
+        After viewing either option, you will have the oppourtunity to change your original decision about which box has more dots, and then provide an updated confidence estimate in your new decision.`
+    ],
+    show_clickable_nav: true}
+
+var experiential_info_seeking_intro = {
+    type: jsPsychInstructions,
+  pages: [
+        `<p style="font-size:25px;">In the next set of trials, you will have the oppourtunity to get extra information about a given trial. <br><br>
+          To do so, you will need to you will need to pay <strong>`+ information_cost+`</strong>. If this extra information helps you make a correct decision, there will be a significant benefit.
+          <br><br>
+        As a reminder: If the box on the left had more dots, <strong>press  ` + resp_keys[0] + 
+        `</strong>. If the box on the right had more dots, <strong>press  ` + resp_keys[1] + `</strong>.<br><br>
+        Press next to begin.</p><br>`
+    ],
+    show_clickable_nav: true}
+
+
+//CREATE STIMULUS MATERIALS /////
+    var fixation = {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: '<div style="font-size:60px;">+</div>',
+    choices: "NO_KEYS",
+    trial_duration: 1000
+};
+
+    var dots = {
+    type: jsPsychCanvasKeyboardResponse,
+    canvas_size: stim_canv,
+    choices: "NO_KEYS", //no response allowed
+    trial_duration: 150,
+    stimulus: function(c){
+        //https://github.com/jspsych/jsPsych/issues/1536
+        if (trial_num > 2){ // if statement stops error being thrown with .correct property
+            var two_trial_ago = jsPsych.data.get().filter({task: 'choice'}).last(2).values()[0].correct
+        };
+        if (trial_num > 1){
+            var one_trial_ago = jsPsych.data.get().filter({task: 'choice'}).last(1).values()[0].correct
+        };
+        nDots = staircase(nDots, one_trial_ago, two_trial_ago, trial_num);
+        
+        var target = jsPsych.timelineVariable('stimulus');
+        //if(Math.random() < 0.5){ target = "left"} else { target = "right"}
+        drawStim(c,"dots",target, nDots_stim = Math.round(Math.exp(nDots)));
+        
+        
+    },
+    prompt: `<p style="font-size:20px;"><strong>Press  `+resp_keys[0]+` </strong> if the box on the left had more dots.<br><strong>Press  `+resp_keys[1]+` </strong> if the box on the right had more dots.</p>`,
+    data: {task: 'dots'},
+    on_finish: function(data) {data.number_dots = nDots} //run in on_finish as functions are called before trial otherwise
+}
+
+var dots_rep = {
+    type: jsPsychCanvasKeyboardResponse,
+    canvas_size: stim_canv,
+    choices: "NO_KEYS",
+    trial_duration: 150,
+    stimulus: function(c){
+        var target = jsPsych.timelineVariable('stimulus');
+        let nDots_trial = Math.round(Math.exp(nDots))
+        drawStim(c,"dots", target, nDots_stim = nDots_trial);
+    },
+    prompt: `<p style="font-size:20px;"><strong>Press  `+resp_keys[0]+` </strong> if the box on the left had more dots.<br><strong>Press  `+resp_keys[1]+` </strong> if the box on the right had more dots.</p>`
+};
+
+
+var choice = {
+    type: jsPsychCanvasKeyboardResponse,
+    canvas_size: stim_canv,
+    choices: resp_keys,
+    stimulus: function (c){
+        drawStim(c)},
+    prompt: `<p style="font-size:20px;"><strong>Press  `+resp_keys[0]+` </strong> if the box on the left had more dots.<br><strong>Press  `+resp_keys[1]+` </strong> if the box on the right had more dots.</p>`,
+    data: {
+        task: 'choice',
+        target_side: jsPsych.timelineVariable('stimulus'),
+        correct_response: jsPsych.timelineVariable('correct_response')
+    },
+    on_finish: function(data){
+        data.correct = jsPsych.pluginAPI.compareKeys(data.response, data.correct_response);
+
+        data.trial_number = trial_num;
+        data.n_dots = nDots;
+      
+        //note: if statements can't be used in data:{}
+        if(trial_num <= num_prac){ data.trial_type = 'practice'
+        } else { data.trial_type = 'experimental'}
+    }
+}
+
+
+var feedback = {
+    type: jsPsychCanvasKeyboardResponse,
+    canvas_size: stim_canv,
+    choices: "NO_KEYS",
+    trial_duration: 500,
+    stimulus: function (c){
+        let target = jsPsych.data.get().last(1).values()[0].response
+        let correct = jsPsych.data.get().last(1).values()[0].correct
+        drawStim(c,"feedback",target,0,correct)
+    },
+    prompt: `<p style="font-size:20px;"><strong>Press  `+resp_keys[0]+` </strong> if the box on the left had more dots.<br><strong>Press  `+resp_keys[1]+` </strong> if the box on the right had more dots.</p>`,
+    on_finish: function(){trial_num++}
+}
+
+var confidence = {
+    type: jsPsychHtmlSliderResponse,
+    stimulus:'Please Rate Your Confidence in Your Decision',
+    min: 0, max: 100, slider_start: 50, slider_width: 800,
+    labels: ['0<br> Certainly Incorrect','50<br> Uncertain','100 <br> Certainly correct'],
+    prompt:'Please select a value to continue.<br>',
+    button_label: 'Submit',
+    require_movement: true,
+    data: {task: 'confidence'},
+    on_finish: function() {
+        var curr_progress_bar_value = jsPsych.getProgressBarCompleted();
+        jsPsych.setProgressBar(curr_progress_bar_value + (1/num_trial));
+
+    }
+};
+
+
+// POST-DECISION EXPERIENCE-BASED VARS
+
+var dots_rep_easier = {
+    type: jsPsychCanvasKeyboardResponse,
+    canvas_size: stim_canv,
+    choices: "NO_KEYS",
+    trial_duration: 400,
+    stimulus: function(c){
+        var prev_outcome = jsPsych.data.get().filter({task: 'choice'}).last(1).values()[0]['correct']
+        if (prev_outcome == false){var feedback_variable = 0.2} /// provides more helpful evidence when the user is wrong
+        else{var feedback_variable = 0}
+        var target = jsPsych.timelineVariable('stimulus');
+        let nDots_trial = Math.round(Math.exp(nDots + feedback_variable))
+        drawStim(c,"dots", target, nDots_stim = nDots_trial);
+    }};
+
+var dots_rep_variable = {
+    type: jsPsychCanvasKeyboardResponse,
+    canvas_size: stim_canv,
+    choices: "NO_KEYS",
+    trial_duration: 200,
+    stimulus: function(c){
+
+        var target = jsPsych.timelineVariable('stimulus');
+        let nDots_trial = Math.round(Math.exp(nDots + 0.2))
+        drawStim(c,"dots", target, nDots_stim = nDots_trial);
+    }};
+
+var post_evidence_confidence = {
+    type: jsPsychHtmlSliderResponse,
+    stimulus: function(){
+        var previous_confidence = jsPsych.data.get().filter({task: 'confidence'}).last(1).values()[0]['response']
+        var text = 'Please rate your updated Confidence in Your Decision. For reference, after your initial decision, you rated your confidence as <strong>'+ previous_confidence+"</strong>"
+        
+    return text;} , 
+    min: 0, max: 100, slider_start: 50, slider_width: 800,
+    labels: ['<strong>0<br>Complete Guess</strong>','<strong>50<br>Unsure<br></strong>','<strong>100<br>Certainly correct</strong>'],
+    prompt:'Please select a value to continue.<br>',
+    button_label: 'Submit',
+    require_movement: true,
+    data: {task: 'updated_confidence'},
+    on_finish: function(data){
+    data.trial_type ='visual_evidence',
+    data.prev_confidence = jsPsych.data.get().filter({task: 'confidence'}).last(1).values()[0]['response']
+    var updated_decision = jsPsych.data.get().filter({task: "post_evidence_decision"}).last(1).values()[0]['response']
+    var prev_result = jsPsych.data.get().filter({task: "choice"}).last(1).values()[0]['correct']
+    var final_outcome = check_updated_answer(updated_decision,prev_result)
+    data.final_outcome = final_outcome},
+}
+var post_evidence_decision = {
+    type: jsPsychHtmlKeyboardResponse,
+    prompt: function(){
+        var previous_response = jsPsych.data.get().filter({task: 'choice'}).last(1).values()[0]['response']
+        var previous_confidence = jsPsych.data.get().filter({task: 'confidence'}).last(1).values()[0]['response']
+        var previous_response = response_to_direction(previous_response)
+        var text = "In the previous trial, you chose the stimulus on the <strong>" +previous_response +"</strong> and rated your confidence as <strong> " + previous_confidence+ "</strong><br></br> Having seen extra information about the trial, would you like to change your decision? <br></br>" +
+        "<br></br> Press <strong> Y </strong> if you would like to change your decision. <br></br> Press <strong> N </strong> if you would like to stick to your original choice"
+        return text;},
+        choices: ["y","n"],
+        stimulus: '<p style="font-size:25px;"',
+        data: {task: 'post_evidence_decision', },
+        on_finish: function(data){
+    data.trial_type ='visual_evidence'},
+    
+}
+
+
+var pre_if_trial = {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: 'You have the chance to view additional trial information to help you answer the question correctly. <br></br> In this trial, you have the oppourtunity to re-inspect the two stimuli previously shown to reevaluate your decision. <br></br> Viewing this information will cost you <strong>' + information_cost + '</strong>. <br></br> If you would like to view this information press <strong> Y</strong>. <br></br> If you would like to continue to the next trial, press <strong>N</strong>.',
+    choices: ["y","n"],
+    data: {task: "info_seek",task_type : 'visual_evidence'}}
+
+
+
+var if_node = {
+    timeline: [fixation, dots_rep_easier, dots_rep_easier, dots_rep_easier,post_evidence_decision, post_evidence_confidence],
+    conditional_function: function(){
+        // get the data from the previous trial,
+        // and check which key was pressed
+        var data = jsPsych.data.get().last(1).values()[0];
+        if(jsPsych.pluginAPI.compareKeys(data.response, 'y')){
+            information_sought ++
+            return true;
+        } else {
+            return false;
+        }
+    }
+}
+
+// POST-DECISION DESCRIPTIVE EVIDENCE VARS //
+
+var descriptive_evidence = {
+    type : jsPsychHtmlKeyboardResponse,
+    prompt : function(){
+        var prev_outcome = jsPsych.data.get().filter({task: 'choice'}).last(1).values()[0]['correct']
+        var previous_response = jsPsych.data.get().filter({task: 'choice'}).last(1).values()[0]['response']
+        var previous_confidence = jsPsych.data.get().filter({task: 'confidence'}).last(1).values()[0]['response']
+        
+        if (prev_outcome == false){ // assuming they give the wrong answer, provide the correct response as the other participants response
+            if (previous_response == 'e'){
+                previous_response = "i"}
+                else if(previous_response == 'i'){
+                 previous_response = "e"}
+               }
+        var previous_response = response_to_direction(previous_response)
+        evidence_confidence = random_n(60,95) 
+        evidence_accuracy = random_n(60,80)
+        
+        var text = "In a previous trial with the same stimuli, a previous participant chose the <strong> " + previous_response +"</strong> and rated their confidence in this decision as <strong>" + evidence_confidence +"</strong>. <br></br> Over the course of the experiment, this participant achieved an average of <strong> " + evidence_accuracy+"%</strong> accuracy."
+        return text
+    },
+    stimulus: '<p style="font-size:25px;"',
+    trial_duration : 5000,
+    on_finish: function(data){
+        data.stimulus_confidence = evidence_confidence, /// it should be saving here but isnt.
+        data.stimulus_accuracy = evidence_accuracy,
+        data.task = 'provide_desc_evidence'
+    }
+}
+
+var descriptive_post_evidence_confidence = {
+    type: jsPsychHtmlSliderResponse,
+    stimulus: function(){
+        var previous_confidence = jsPsych.data.get().filter({task: 'confidence'}).last(1).values()[0]['response']
+        
+        var text = 'Please rate your updated Confidence in Your Decision. For reference, after your initial decision, you rated your confidence as <strong>'+ previous_confidence+"</strong>"
+    return text;} , 
+    min: 0, max: 100, slider_start: 50, slider_width: 800,
+    labels: ['<strong>0<br>Complete Guess</strong>','<strong>50<br>Unsure<br></strong>','<strong>100<br>Certainly correct</strong>'],
+    prompt:'Please select a value to continue.<br>',
+    button_label: 'Submit',
+    require_movement: true,
+    data: {task: 'updated_confidence'},
+    on_finish: function(data){
+    data.trial_type ='descriptive_evidence'
+    data.prev_confidence = jsPsych.data.get().filter({task: 'confidence'}).last(1).values()[0]['response']
+    var updated_decision = jsPsych.data.get().filter({task: "post_evidence_decision"}).last(1).values()[0]['response']
+    var prev_result = jsPsych.data.get().filter({task: "choice"}).last(1).values()[0]['correct']
+    var final_outcome = check_updated_answer(updated_decision,prev_result)
+    data.final_outcome = final_outcome},
+}
+    
+
+var descriptive_post_evidence_decision = {
+    type: jsPsychHtmlKeyboardResponse,
+    prompt: function(){
+        var previous_response = jsPsych.data.get().filter({task: 'choice'}).last(1).values()[0]['response']
+        var previous_confidence = jsPsych.data.get().filter({task: 'confidence'}).last(1).values()[0]['response']
+        var previous_response = response_to_direction(previous_response)
+        var text = "In the previous trial, you chose the stimulus on the <strong>" +previous_response +"</strong> and rated your confidence as <strong> " + previous_confidence+ "</strong><br></br> Having seen extra information about the trial, would you like to change your decision? <br></br>" +
+        "<br></br> Press <strong> Y </strong> if you would like to change your decision. <br></br> Press <strong> N </strong> if you would like to stick to your original choice"
+        return text;},
+        choices: ["y","n"],
+        stimulus: '<p style="font-size:25px;"',
+        data: {task: 'post_evidence_decision'},
+        on_finish: function(data){
+    data.trial_type ='descriptive_evidence'},
+    
+}
+
+var descriptive_if_node = {
+    timeline:[descriptive_evidence, descriptive_post_evidence_decision, descriptive_post_evidence_confidence],
+    conditional_function: function(){
+        // get the data from the previous trial,
+        // and check which key was pressed
+        var data = jsPsych.data.get().last(1).values()[0];
+        if(jsPsych.pluginAPI.compareKeys(data.response, 'y')){
+            information_sought ++
+            return true;
+        } else {
+            return false;
+        }
+    }
+}
+
+var descriptive_pre_if_node = {type: jsPsychHtmlKeyboardResponse,
+    stimulus: 'You have the chance to view additional trial information to help you answer the question correctly. <br></br> In this trial, you have the oppourtunity to view the decision of a random participant who did the same trial as youre to help you evaluate your decision. <br></br> Viewing this information will cost you <strong>' + information_cost +'</strong> points. <br></br> If you would like to view this information press <strong> Y</strong>. <br></br> If you would like to continue to the next trial, press <strong>N</strong>.',
+    choices: ["y","n"],
+    data: {task: "info_seek" ,task_type : 'descriptive_evidence'}}
+
+    
+//TOGGLE PRACTICE TRIAL DIFFERENCES AND BREAKS/////
+var end_prac = {
+    timeline: [conf_intro,score_tutorial,exp_intro],
+    conditional_function: function(){
+        if(trial_num == num_prac+1) { return true
+        } else { return false }
+    }
+};
+
+var conf_toggle = {
+    timeline: [confidence],
+    conditional_function: function(){
+        if(trial_num > num_prac+1){ return 
+        } else { return false }
+    }
+};
+
+
+var exp_info_toggle = {
+    timeline: [pre_if_trial,if_node],
+    conditional_function: function(){
+  
+        if(trial_num - num_prac > (num_total/5) - 1  && (current_block == info_presentation_order[0]) || (current_block == info_presentation_order[1])){ 
+            var previous_confidence = jsPsych.data.get().filter({task: 'confidence'}).last(1).values()[0]['response']
+            if (previous_confidence < confidence_threshold){ return true}
+        else{return false}
+        } else { return false }
+    }
+};
+
+var desc_info_toggle = {
+    timeline: [descriptive_pre_if_node, descriptive_if_node],
+    conditional_function: function(){
+        
+        if(trial_num - num_prac > (num_total/5) - 1 && (current_block == info_presentation_order[2]) || (current_block == info_presentation_order[3])){ 
+            var previous_confidence = jsPsych.data.get().filter({task: 'confidence'}).last(1).values()[0]['response']
+            if (previous_confidence < confidence_threshold){ return true}
+        else{return false}
+        } else { return false }
+    }
+};
+
+
+var info_instructions_toggle = {
+    timeline: [information_seeking_intro],
+    conditional_function: function(){
+        if(((trial_num-1)-num_prac)%(num_trial/num_block) == 0 && trial_num > (num_prac+1) && trial_num < num_total && (not_yet_shown == true)) {
+            not_yet_shown = false
+            return true
+
+        } else {
+            return false}
+    }
+};
+
+var delay = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: '<p>The next trial will start in <span id="clock">0:02</span>.',
+  choices: ['Please Wait'],
+  trial_duration: 2050,
+  on_load: function(){
+    var wait_time = 1 * 2 * 1000; // in milliseconds
+    var start_time = performance.now();
+    document.querySelector('button').disabled = true;
+    var interval = setInterval(function(){
+      var time_left = wait_time - (performance.now() - start_time);
+      var minutes = Math.floor(time_left / 1000 / 60);
+      var seconds = Math.floor((time_left - minutes*1000*60)/1000);
+      var seconds_str = seconds.toString().padStart(2,'0');
+      document.querySelector('#clock').innerHTML = minutes + ':' + seconds_str
+      if(time_left <= 0){
+        document.querySelector('#clock').innerHTML = "0:00";
+        document.querySelector('button').disabled = false;
+        clearInterval(interval);
+      }
+    }, 250)
+  }
+}
+
+var data_storage = {
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: '<div style="font-size:60px;">+</div>',
+   
+    choices: "NO_KEYS",
+    trial_duration: 200,
+    on_finish: function(data){
+        
+        data.task = 'data_storage'
+        // This function will store the data from a single timeline run in a nice way: The key vars needed are:
+        // trial_n,  RT, Ndots, Initial_Response (T/F), Initial_Confidence, info_sought?, type_of_info_sought, info_strength, decision_changed?,final_response(T/F), updated_confidence
+
+        /// From Choice:
+      
+        data.trial_number = trial_num
+        data.initial_rt = jsPsych.data.get().filter({task:'choice'}).last(1).values()[0]['rt']
+        data.ndots = nDots
+        data.initial_response = jsPsych.data.get().filter({task: 'choice'}).last(1).values()[0]['correct']
+        if (trial_num > num_prac + 1){
+            
+        data.inital_confidence =jsPsych.data.get().filter({task: 'confidence'}).last(1).values()[0]['response']
+        data.confidece_rt = jsPsych.data.get().filter({task: 'confidence'}).last(1).values()[0]['rt']
+        if (trial_num - num_prac > (num_total/4) ){ // if trials are after practice and calibration phase they can be filled, else NULL
+                                                    // extra edge case if they dont seek info
+            
+            if (jsPsych.data.get().filter({task: 'confidence'}).last(1).values()[0]['response'] < 101){
+            data.info_searched = jsPsych.data.get().filter({task: 'info_seek'}).last(1).values()[0]['response']
+            data.type_of_info  = jsPsych.data.get().filter({task: 'info_seek'}).last(1).values()[0]['task_type']
+            data.info_seek_rt = jsPsych.data.get().filter({task: 'info_seek'}).last(1).values()[0]['rt']
+            if (data.info_searched == 'y'){
+                
+ 
+            //data.info_strength = 
+                data.decision_change = jsPsych.data.get().filter({task: 'post_evidence_decision'}).last(1).values()[0]['response']
+                data.decision_change_rt = jsPsych.data.get().filter({task: 'post_evidence_decision'}).last(1).values()[0]['rt']
+                data.final_resp_value = jsPsych.data.get().filter({task: 'updated_confidence'}).last(1).values()[0]['final_outcome']
+                data.final_conf = jsPsych.data.get().filter({task: 'updated_confidence'}).last(1).values()[0]['response']
+                if (data.type_of_info == "visual_evidence"){
+                   
+                    var info_p1 = jsPsych.data.get().filter({task: 'choice'}).last(1).values()[0]['n_dots']
+                    var info_p2 = jsPsych.data.get().filter({task: 'choice'}).last(1).values()[0]['correct']
+                    if(info_p2 ==false){
+                        data.info_strength = info_p1 + 0.2}
+                    else{data.info_strength = info_p1}}
+            
+                else if (data.type_of_info == "descriptive_evidence"){
+                    var part_conf = jsPsych.data.get().filter({task: 'provide_desc_evidence'}).last(1).values()[0]['stimulus_confidence']
+                    var part_acc = jsPsych.data.get().filter({task: 'provide_desc_evidence'}).last(1).values()[0]['stimulus_accuracy']
+                    data.info_strength = [part_conf,part_acc]}
+
+            }
+            
+        
+            else if (data.info_searched == 'n'){ 
+                
+                
+                data.decision_change = null
+                data.decision_change_rt = null
+                data.final_resp_value = null
+                data.final_conf = null
+                data.info_strength = null}}
+        else{ data.info_searched = null
+                data.type_of_info = null
+                data.decision_change = null
+                data.decision_change_rt = null
+                data.final_resp_value = null
+                data.final_conf = null
+                data.info_strength = null
+                data.info_seek_rt = null}}
+        else { // in practice and calibration trials, these values are not possible to achieve.
+                data.info_searched = null
+                data.type_of_info = null
+                data.decision_change = null
+                data.decision_change_rt =null
+                data.final_resp_value = null
+                data.final_conf = null
+                data.info_strength = null
+                data.info_seek_rt = null
+            }
+    }
+    else{data.inital_confidence = null
+         data.confidence_rt = null}
+}
+}
+
+var block = {
+    timeline: [trial_break],
+    conditional_function: function(){
+        if(((trial_num-1)-num_prac)%(num_trial/num_block) == 0 && trial_num > (num_prac+1) && trial_num < num_total) {
+            return true
+        } else {
+            return false}
+    }
+};
+
+var delay_toggle ={
+    timeline:[delay],
+    conditional_function: function(){
+        if(trial_num - num_prac > (num_total/5)){
+            info_searched = jsPsych.data.get().last(1).values()[0]['response']
+           
+            if(info_searched == 'n'){
+            return true}
+            else{
+                return false
+            }}
+            else{ 
+                return false
+            }
+        }}
+
+
+
+//CREATE TIMELINE
+var trial_procedure = {
+    timeline: [end_prac, block, info_instructions_toggle, fixation, dots,dots_rep,dots_rep,dots_rep,dots_rep, choice, feedback, conf_toggle,exp_info_toggle,desc_info_toggle,delay_toggle,data_storage],
+    timeline_variables: [{stimulus: 'left', correct_response: resp_keys[0]},
+                         {stimulus: 'right', correct_response: resp_keys[1]}],
+    repetitions: num_total/2,
+    randomize_order: true,
+    type: 'with-replacement'
+};
+
+timeline.push({type: jsPsychFullscreen,fullscreen_mode: true},resize,subject_id_q, intro, trial_procedure,debrief_page,exit_page);
+
+jsPsych.run(timeline)
+  </script>
+</html>
